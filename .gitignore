@@ -1,7 +1,4 @@
-# macOS
 .DS_Store
-
-# Xcode
 DerivedData/
 build/
 *.xcuserstate
@@ -9,26 +6,14 @@ build/
 xcuserdata/
 *.xccheckout
 *.moved-aside
-
-# Swift Package Manager
 .swiftpm/
 .build/
-
-# Playgrounds
 timeline.xctimeline
 playground.xcworkspace
-
-# CocoaPods (if added later)
 Pods/
 *.podspec.json
-
-# Carthage (if added later)
 Carthage/
-
-# Fastlane (if added later)
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
-
-# Archives
 *.zip
