@@ -1,0 +1,34 @@
+# macOS
+.DS_Store
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+*.xcscmblueprint
+xcuserdata/
+*.xccheckout
+*.moved-aside
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# CocoaPods (if you add later)
+Pods/
+*.podspec.json
+
+# Carthage (if you add later)
+Carthage/
+
+# Fastlane (if you add later)
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+
+# Archives
+*.zip
