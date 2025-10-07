@@ -18,14 +18,14 @@ xcuserdata/
 timeline.xctimeline
 playground.xcworkspace
 
-# CocoaPods (if you add later)
+# CocoaPods (if added later)
 Pods/
 *.podspec.json
 
-# Carthage (if you add later)
+# Carthage (if added later)
 Carthage/
 
-# Fastlane (if you add later)
+# Fastlane (if added later)
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
