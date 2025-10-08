@@ -5,25 +5,36 @@
 //  Created by joe stewart on 10/7/25.
 // ViewModels/GolfGameViewModel+Replay.swift
 // Also forces first-hole stake to startingPointValue during replay, just like live play.
+// ViewModels/GolfGameViewModel+Replay.swift
+// During replay, also lock Hole 1 stake to startingPointValue before scoring.
 
 import Foundation
 
 extension GolfGameViewModel {
 
-    /// Back-compat for older callers
+    /// Back-compat for older callers (used by Edit Past Hole, etc.)
     func applyEditedHoleRecalcForward() {
         replayEntireRound()
     }
 
-    /// Deterministic round rebuild from gross scores.
+    /// Deterministic rebuild: recompute nets for entered holes,
+    /// sync teams, score per hole, persist stake/contrib, rebuild aggregates.
     func replayEntireRound() {
         guard !games.isEmpty else { return }
 
-        localEnsurePerHoleStorage()
-        localClearPerHoleArraysAndAggregates()
+        // Ensure arrays exist & zero live aggregates (helpers live in +Aggregation / +PressSchedule)
+        // localEnsurePerHoleStorage + localClearPerHoleArraysAndAggregates were inlined previously;
+        // if you still have them in a separate file, call them here instead.
+        // For safety, just zero the live contributions:
+        for gi in games.indices {
+            games[gi].teamA.aggregatePoints = 0
+            games[gi].teamB.aggregatePoints = 0
+            games[gi].currentHoleContributionForTeamA = 0
+            games[gi].currentHoleContributionForTeamB = 0
+        }
 
+        // Replay each hole that has at least one gross score
         for holeIdx in 0..<18 {
-            // Skip unentered holes
             var anyGross = false
             for i in 0..<numPlayers where players.indices.contains(i) {
                 if players[i].grossScores.indices.contains(holeIdx),
@@ -35,32 +46,41 @@ extension GolfGameViewModel {
 
             currentHole = holeIdx + 1
 
-            // Recompute nets for players with gross on this hole
+            // Recompute nets for this hole
             for i in 0..<numPlayers where players.indices.contains(i) {
                 let g = players[i].grossScores[holeIdx]
                 players[i].netScores[holeIdx] = (g >= 0) ? calculateNetScore(for: players[i], gross: g, at: currentHole) : 0
             }
 
-            // 🔑 Sync teams for fresh values
+            // Sync teams so games see fresh values
             syncTeamsForCurrentPlayers()
 
-            // 🔒 Stake sanity on FIRST hole of replay as well
+            // 🔒 Enforce stake = startingPointValue on HOLE 1 in replay too
             if holeIdx == 0 {
-                for gi in games.indices { games[gi].currentPointValue = startingPointValue }
+                for gi in games.indices {
+                    games[gi].currentPointValue = startingPointValue
+                    if stakesPerHoleByGame.indices.contains(gi) && stakesPerHoleByGame[gi].indices.contains(0) {
+                        stakesPerHoleByGame[gi][0] = startingPointValue
+                    }
+                    games[gi].frontPressUsedTeamA = false
+                    games[gi].frontPressUsedTeamB = false
+                    games[gi].backPressUsedTeamA  = false
+                    games[gi].backPressUsedTeamB  = false
+                }
             }
 
-            // Score each game for this hole
+            // Score this hole for each game
             for gi in games.indices { scoreHole(for: &games[gi], at: holeIdx) }
 
-            // Persist stake & contributions for this hole
+            // Persist stake & contributions
             captureStakeForJustScoredHole()
             writeContribForHole(currentHole)
         }
 
-        // Rebuild aggregates strictly from arrays
+        // Rebuild aggregates from per-hole arrays
         recomputeAggregatesFromPerHole()
 
-        // Set currentHole to first unscored (or 18)
+        // Advance currentHole to first unentered
         var firstUnscored: Int? = nil
         outer: for h in 0..<18 {
             for i in 0..<numPlayers where players.indices.contains(i) {
@@ -73,41 +93,6 @@ extension GolfGameViewModel {
         } else {
             currentHole = 18
             isRoundComplete = true
-        }
-    }
-
-    // MARK: - Local helpers
-
-    private func localEnsurePerHoleStorage() {
-        if stakesPerHoleByGame.count != games.count {
-            stakesPerHoleByGame = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
-        }
-        for gi in games.indices where stakesPerHoleByGame[gi].count != 18 {
-            stakesPerHoleByGame[gi] = Array(repeating: 0, count: 18)
-        }
-        if contribPerHoleAByGame.count != games.count {
-            contribPerHoleAByGame = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
-        }
-        if contribPerHoleBByGame.count != games.count {
-            contribPerHoleBByGame = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
-        }
-        for gi in games.indices {
-            if contribPerHoleAByGame[gi].count != 18 { contribPerHoleAByGame[gi] = Array(repeating: 0, count: 18) }
-            if contribPerHoleBByGame[gi].count != 18 { contribPerHoleBByGame[gi] = Array(repeating: 0, count: 18) }
-        }
-    }
-
-    private func localClearPerHoleArraysAndAggregates() {
-        for gi in games.indices {
-            for h in 0..<18 {
-                stakesPerHoleByGame[gi][h] = 0
-                contribPerHoleAByGame[gi][h] = 0
-                contribPerHoleBByGame[gi][h] = 0
-            }
-            games[gi].teamA.aggregatePoints = 0
-            games[gi].teamB.aggregatePoints = 0
-            games[gi].currentHoleContributionForTeamA = 0
-            games[gi].currentHoleContributionForTeamB = 0
         }
     }
 }

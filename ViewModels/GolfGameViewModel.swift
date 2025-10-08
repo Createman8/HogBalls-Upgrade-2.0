@@ -5,6 +5,9 @@
 // ViewModels/GolfGameViewModel.swift
 // Ensures first-hole stake = startingPointValue (no accidental 2x on Hole 1)
 // Keeps: team sync, per-hole capture, array-based recompute
+// ViewModels/GolfGameViewModel.swift
+// Locks Hole 1 stake to startingPointValue, blocks presses on Hole 1,
+// keeps team sync + 5-player mapping: 12 vs 34, 12 vs 35, 12 vs 45.
 
 import Foundation
 import SwiftUI
@@ -28,12 +31,12 @@ final class GolfGameViewModel: ObservableObject {
     @Published var isGameSetupComplete: Bool = false
     @Published var isRoundComplete: Bool = false
 
-    // Per-hole storage
+    // Per-hole storage (arrays are the source of truth for aggregates)
     @Published var stakesPerHoleByGame: [[Int]] = []     // [game][holeIdx]
     @Published var contribPerHoleAByGame: [[Int]] = []   // [game][holeIdx]
     @Published var contribPerHoleBByGame: [[Int]] = []   // [game][holeIdx]
 
-    // Hog Balls overlay trigger
+    // Hog Balls overlay trigger (UI feature)
     @Published var hogBallsCount: Int = 0
     @Published var hogBallsEventID: Int = 0
 
@@ -86,11 +89,12 @@ final class GolfGameViewModel: ObservableObject {
             ]
         }
 
+        // Shape per-hole arrays
         stakesPerHoleByGame   = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
         contribPerHoleAByGame = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
         contribPerHoleBByGame = Array(repeating: Array(repeating: 0, count: 18), count: games.count)
 
-        // Sanity: every game starts with startingPointValue
+        // Sanity: all games start at startingPointValue
         for gi in games.indices { games[gi].currentPointValue = startingPointValue }
 
         isGameSetupComplete = true
@@ -120,7 +124,7 @@ final class GolfGameViewModel: ObservableObject {
         return (low, total)
     }
 
-    // MARK: Scoring (sync teams + force stake=starting on hole #1)
+    // MARK: Scoring (sync teams + lock stake on Hole 1)
 
     func submitHoleScores(grossScores: [Int]) {
         let holeNumber = currentHole
@@ -136,12 +140,23 @@ final class GolfGameViewModel: ObservableObject {
         // 🔑 Keep game teams in sync with master players (Player is a struct)
         syncTeamsForCurrentPlayers()
 
-        // 🔒 Stake sanity: on the FIRST hole, hard-set stake to startingPointValue
+        // 🔒 Enforce stake = startingPointValue on HOLE 1 (prevents accidental 2×)
         if holeIdx == 0 {
-            for gi in games.indices { games[gi].currentPointValue = startingPointValue }
+            for gi in games.indices {
+                games[gi].currentPointValue = startingPointValue
+                // also persist the scheduled stake for Hole 1
+                if stakesPerHoleByGame.indices.contains(gi) && stakesPerHoleByGame[gi].indices.contains(0) {
+                    stakesPerHoleByGame[gi][0] = startingPointValue
+                }
+                // no presses considered used on Hole 1
+                games[gi].frontPressUsedTeamA = false
+                games[gi].frontPressUsedTeamB = false
+                games[gi].backPressUsedTeamA  = false
+                games[gi].backPressUsedTeamB  = false
+            }
         }
 
-        // Score each game
+        // Score each game (idempotent: we zero previous hole contribs inside)
         for gi in games.indices {
             scoreHole(for: &games[gi], at: holeIdx)
         }
@@ -188,9 +203,12 @@ final class GolfGameViewModel: ObservableObject {
         game.teamB.aggregatePoints += bContrib
     }
 
-    // MARK: Presses (front/back) + courtesy
+    // MARK: Presses (block on Hole 1) + courtesy
 
     func pressForGame(gameIndex: Int) {
+        // 🔒 Never allow a press on Hole 1
+        guard currentHole > 1 else { return }
+
         let isFront = currentHole <= 9
         var g = games[gameIndex]
 
@@ -205,7 +223,9 @@ final class GolfGameViewModel: ObservableObject {
     }
 
     func grantCourtesyPress(forGameIndex index: Int) {
-        guard canShowCourtesyPressUI else { return }
+        // courtesy UI already gated in CourtesyGate extension;
+        // keep a guard here as well for safety.
+        guard currentHole >= 18 else { return }
         var g = games[index]
         g.currentPointValue *= 2
         games[index] = g
